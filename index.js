@@ -87,6 +87,18 @@ app.get("/books/:id", async (req, res) => {
   }
 });
 
+
+
+app.get("/my-books", async (req, res) => {
+  const email = req.query.email;
+
+  const result = await bookCollection
+    .find({ userEmail: email })
+    .toArray();
+
+  res.send(result);
+});
+
 // Start server
 async function startServer() {
   try {
