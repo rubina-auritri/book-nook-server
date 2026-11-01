@@ -99,6 +99,65 @@ app.get("/my-books", async (req, res) => {
   res.send(result);
 });
 
+
+
+app.put("/books/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const {
+      title,
+      author,
+      category,
+      image,
+      description,
+      userEmail,
+    } = req.body;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        message: "Invalid book ID",
+      });
+    }
+
+    const result = await bookCollection.updateOne(
+      {
+        _id: new ObjectId(id),
+        userEmail: userEmail,
+      },
+      {
+        $set: {
+          title,
+          author,
+          category,
+          image,
+          description,
+        },
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).send({
+        message: "Book not found or unauthorized",
+      });
+    }
+
+    res.send({
+      success: true,
+      message: "Book updated successfully",
+    });
+
+  } catch (error) {
+    res.status(500).send({
+      message: "Failed to update book",
+    });
+  }
+});
+
+
+
+
+
 // Start server
 async function startServer() {
   try {
