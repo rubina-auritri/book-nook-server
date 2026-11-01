@@ -1,6 +1,6 @@
 
 import express from "express";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import cors from "cors";
 import "dotenv/config";
 
@@ -10,32 +10,84 @@ const PORT = 5000;
 app.use(cors());
 app.use(express.json());
 
-// Test route (no MongoDB required)
+const client = new MongoClient(process.env.MONGODB_URI);
+
+let bookCollection;
+
+// Test route
 app.get("/", (req, res) => {
   res.send("Backend is working!");
 });
 
+// GET all books
 app.get("/books", async (req, res) => {
   try {
-    const data = {
-      ...req.body,
-      addedDate: new Date(),
-    };
-    const db = client.db("Book-Nook");
-    const bookCollection = db.collection("books");
     const books = await bookCollection.find().toArray();
-    res.json(books);
+    res.send(books);
   } catch (error) {
-    res.status(500).json({
+    res.status(500).send({
       success: false,
       message: error.message,
     });
   }
 });
 
+// POST a new book
+app.post("/books", async (req, res) => {
+  try {
+    const bookData = {
+      ...req.body,
+      addedDate: new Date(),
+    };
 
-const client = new MongoClient(process.env.MONGODB_URI);
+    const result = await bookCollection.insertOne(bookData);
 
+    res.status(201).send({
+      success: true,
+      message: "Book added successfully!",
+      insertedId: result.insertedId,
+    });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+// GET single book by ID
+app.get("/books/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid book ID",
+      });
+    }
+
+    const book = await bookCollection.findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!book) {
+      return res.status(404).send({
+        success: false,
+        message: "Book not found",
+      });
+    }
+
+    res.send(book);
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+// Start server
 async function startServer() {
   try {
     await client.connect();
@@ -43,33 +95,11 @@ async function startServer() {
     console.log("MongoDB connected!");
 
     const db = client.db("Book-Nook");
-    const bookCollection = db.collection("books");
-
-    // POST API
-    app.post("/books", async (req, res) => {
-      try {
-        const result = await bookCollection.insertOne({
-          ...req.body,
-          addedDate: new Date(),
-        });
-
-        res.status(201).json({
-          success: true,
-          message: "Book added successfully!",
-          insertedId: result.insertedId,
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          message: error.message,
-        });
-      }
-    });
+    bookCollection = db.collection("books");
 
     app.listen(PORT, () => {
       console.log(`Server running at http://localhost:${PORT}`);
     });
-
   } catch (error) {
     console.error("Server error:", error);
   }
