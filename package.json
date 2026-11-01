@@ -4,13 +4,21 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+<<<<<<< HEAD
     "start": "node index.js",
     "dev": "nodemon index.js"
+=======
+    "test": "echo \"Error: no test specified\" && exit 1"
+>>>>>>> 45fc2a7a8d0d079cbf673966006047fd7d50a63a
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
+<<<<<<< HEAD
   "type": "module",
+=======
+  "type": "commonjs",
+>>>>>>> 45fc2a7a8d0d079cbf673966006047fd7d50a63a
   "dependencies": {
     "cors": "^2.8.6",
     "dotenv": "^18.0.9",
@@ -22,4 +30,7 @@
     "nodemon": "^3.1.14"
   }
 }
+<<<<<<< HEAD
 
+=======
+>>>>>>> 45fc2a7a8d0d079cbf673966006047fd7d50a63a
