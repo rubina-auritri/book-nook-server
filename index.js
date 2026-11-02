@@ -15,6 +15,7 @@ app.use(express.json());
 const client = new MongoClient(process.env.MONGODB_URI);
 
 let bookCollection;
+let borrowCollection;
 
 const JWKS = createRemoteJWKSet(
   new URL(`http://localhost:3000/api/auth/jwks`),
@@ -157,7 +158,7 @@ app.get("/my-books/:email",verifyToken, async (req, res) => {
   }
 });
 
-app.put("/books/:id", async (req, res) => {
+app.put("/books/:id",verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -210,7 +211,7 @@ app.put("/books/:id", async (req, res) => {
   }
 });
 
-app.delete("/books/:id", async (req, res) => {
+app.delete("/books/:id",verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -246,7 +247,97 @@ async function startServer() {
     console.log("MongoDB connected!");
 
     const db = client.db("Book-Nook");
-    bookCollection = db.collection("books");
+      bookCollection = db.collection("books");
+   const borrowCollection = db.collection("borrows");
+
+   app.post("/borrows", verifyToken, async (req, res) => {
+  try {
+    const { bookId, bookTitle, bookImage } = req.body;
+    const userEmail = req.user.email;
+
+    // Check if this user already borrowed this book
+    const alreadyBorrowed = await borrowCollection.findOne({
+      bookId: bookId,
+      userEmail: userEmail,
+    });
+
+    if (alreadyBorrowed) {
+      return res.status(400).send({
+        success: false,
+        message: "You have already borrowed this book!",
+      });
+    }
+
+    const borrowDate = new Date();
+    const returnDate = new Date();
+    returnDate.setDate(returnDate.getDate() + 14);
+
+    const borrowData = {
+      bookId,
+      bookTitle,
+      bookImage,
+      userEmail,
+      borrowDate,
+      returnDate,
+    };
+
+    const result = await borrowCollection.insertOne(borrowData);
+
+    res.send({
+      success: true,
+      message: "Book borrowed successfully",
+      insertedId: result.insertedId,
+    });
+  } catch (error) {
+    res.status(500).send({ message: error.message });
+  }
+});
+
+
+
+app.get("/my-borrows", verifyToken, async (req, res) => {
+  try {
+    const userEmail = req.user.email;
+
+    const result = await borrowCollection
+      .find({ userEmail })
+      .sort({ borrowDate: -1 })
+      .toArray();
+
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: error.message });
+  }
+});
+
+
+app.delete("/borrows/:id", verifyToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    const result = await borrowCollection.deleteOne({
+      _id: new ObjectId(id),
+      userEmail: req.user.email,
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).send({
+        message: "Borrow record not found",
+      });
+    }
+
+    res.send({
+      message: "Book returned successfully",
+    });
+  } catch (error) {
+    res.status(500).send({
+      message: "Failed to return book",
+    });
+  }
+});
+
+
+
 
     app.listen(PORT, () => {
       console.log(`Server running at http://localhost:${PORT}`);
