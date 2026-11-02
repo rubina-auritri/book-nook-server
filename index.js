@@ -3,6 +3,8 @@ import express from "express";
 import { MongoClient, ObjectId } from "mongodb";
 import cors from "cors";
 import "dotenv/config";
+import { jwtVerify, createRemoteJWKSet } from 'jose'
+
 
 const app = express();
 const PORT = 5000;
@@ -13,6 +15,46 @@ app.use(express.json());
 const client = new MongoClient(process.env.MONGODB_URI);
 
 let bookCollection;
+
+const JWKS = createRemoteJWKSet(
+  new URL(`http://localhost:3000/api/auth/jwks`),
+);
+
+
+const verifyToken = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    return res.status(401).send({
+      success: false,
+      message: "Authorization header is blocked",
+    });
+  }
+const token = authHeader.split(" ")[1]; 
+if (!token) {
+    return res.status(401).send({
+      success: false,
+      message: "Token is missing",
+    });
+  }
+
+  try {
+    
+    const { payload } = await jwtVerify(token, JWKS, {
+      issuer: 'http://localhost:3000',
+      audience: 'http://localhost:3000',
+    });
+    console.log("JWT Payload:", payload);
+    req.user = payload; // Attach the decoded payload to the request object
+  } catch (error) {
+    return res.status(401).send({
+      success: false,
+      message: "Invalid token",
+    });
+  }
+  // Add token verification logic here
+  next();
+};
 
 // Test route
 app.get("/", (req, res) => {
@@ -33,7 +75,7 @@ app.get("/books", async (req, res) => {
 });
 
 // POST a new book
-app.post("/books", async (req, res) => {
+app.post("/books",  async (req, res) => {
   try {
     const bookData = {
       ...req.body,
@@ -56,7 +98,7 @@ app.post("/books", async (req, res) => {
 });
 
 // GET single book by ID
-app.get("/books/:id", async (req, res) => {
+app.get("/books/:id",verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -89,7 +131,7 @@ app.get("/books/:id", async (req, res) => {
 
 
 
-app.get("/my-books", async (req, res) => {
+app.get("/my-books",verifyToken, async (req, res) => {
   const email = req.query.email;
 
   const result = await bookCollection
@@ -99,7 +141,21 @@ app.get("/my-books", async (req, res) => {
   res.send(result);
 });
 
+app.get("/my-books/:email",verifyToken, async (req, res) => {
+  try {
+    const email = req.params.email;
 
+    const result = await bookCollection
+      .find({ userEmail: email })
+      .toArray();
+
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({
+      message: "Failed to fetch books",
+    });
+  }
+});
 
 app.put("/books/:id", async (req, res) => {
   try {
@@ -154,7 +210,31 @@ app.put("/books/:id", async (req, res) => {
   }
 });
 
+app.delete("/books/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
 
+    const { ObjectId } = await import("mongodb");
+
+    const result = await bookCollection.deleteOne({
+      _id: new ObjectId(id),
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).send({
+        message: "Book not found",
+      });
+    }
+
+    res.send({
+      message: "Book deleted successfully",
+    });
+  } catch (error) {
+    res.status(500).send({
+      message: "Failed to delete book",
+    });
+  }
+});
 
 
 
