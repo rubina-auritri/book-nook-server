@@ -7,7 +7,7 @@ import { jwtVerify, createRemoteJWKSet } from 'jose'
 
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
@@ -18,7 +18,7 @@ let bookCollection;
 let borrowCollection;
 
 const JWKS = createRemoteJWKSet(
-  new URL(`http://localhost:3000/api/auth/jwks`),
+  new URL(`${process.env.AUTH_BASE_URL}/api/auth/jwks`),
 );
 
 
@@ -42,8 +42,8 @@ if (!token) {
   try {
     
     const { payload } = await jwtVerify(token, JWKS, {
-      issuer: 'http://localhost:3000',
-      audience: 'http://localhost:3000',
+      issuer: process.env.AUTH_BASE_URL,
+      audience: process.env.AUTH_BASE_URL,
     });
     console.log("JWT Payload:", payload);
     req.user = payload; // Attach the decoded payload to the request object
@@ -76,10 +76,12 @@ app.get("/books", async (req, res) => {
 });
 
 // POST a new book
-app.post("/books",  async (req, res) => {
+app.post("/books",verifyToken, async (req, res) => {
   try {
     const bookData = {
       ...req.body,
+       userEmail: req.user.email,
+    
       addedDate: new Date(),
     };
 
@@ -348,3 +350,4 @@ app.delete("/borrows/:id", verifyToken, async (req, res) => {
 }
 
 startServer();
+export default app;
