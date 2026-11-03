@@ -377,6 +377,33 @@ app.delete("/borrows/:id", verifyToken, async (req, res) => {
   }
 });
 
+
+// Get latest 6 books
+
+
+// GET latest 6 books (New Arrivals)
+app.get("/new-arrivals", async (req, res) => {
+  try {
+    const latestBooks = await bookCollection
+      .find({})
+      .sort({ addedDate: -1 })
+      .limit(6)
+      .toArray();
+
+    res.status(200).json(latestBooks);
+
+  } catch (error) {
+    console.error("New Arrivals Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch new arrivals",
+      error: error.message,
+    });
+  }
+});
+
+
 // Local development only
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
