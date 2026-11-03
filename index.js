@@ -3,8 +3,7 @@ import express from "express";
 import { MongoClient, ObjectId } from "mongodb";
 import cors from "cors";
 import "dotenv/config";
-import { jwtVerify, createRemoteJWKSet } from 'jose'
-
+import { jwtVerify, createRemoteJWKSet } from "jose";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -12,16 +11,54 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// MongoDB connection
 const client = new MongoClient(process.env.MONGODB_URI);
 
 let bookCollection;
 let borrowCollection;
+let dbPromise;
 
+async function connectDB() {
+  if (!dbPromise) {
+    dbPromise = client.connect()
+      .then(() => {
+        console.log("MongoDB connected!");
+
+        const db = client.db("Book-Nook");
+
+        bookCollection = db.collection("books");
+        borrowCollection = db.collection("borrows");
+      })
+      .catch((error) => {
+        dbPromise = null;
+        throw error;
+      });
+  }
+
+  return dbPromise;
+}
+
+// Connect database before every request
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    console.error("Database connection error:", error);
+
+    res.status(500).send({
+      success: false,
+      message: "Database connection failed",
+    });
+  }
+});
+
+// JWT Configuration
 const JWKS = createRemoteJWKSet(
-  new URL(`${process.env.AUTH_BASE_URL}/api/auth/jwks`),
+  new URL(`${process.env.AUTH_BASE_URL}/api/auth/jwks`)
 );
 
-
+// Verify Token
 const verifyToken = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -31,8 +68,10 @@ const verifyToken = async (req, res, next) => {
       message: "Authorization header is blocked",
     });
   }
-const token = authHeader.split(" ")[1]; 
-if (!token) {
+
+  const token = authHeader.split(" ")[1];
+
+  if (!token) {
     return res.status(401).send({
       success: false,
       message: "Token is missing",
@@ -40,20 +79,21 @@ if (!token) {
   }
 
   try {
-    
     const { payload } = await jwtVerify(token, JWKS, {
       issuer: process.env.AUTH_BASE_URL,
       audience: process.env.AUTH_BASE_URL,
     });
+
     console.log("JWT Payload:", payload);
-    req.user = payload; // Attach the decoded payload to the request object
+    req.user = payload;
+
   } catch (error) {
     return res.status(401).send({
       success: false,
       message: "Invalid token",
     });
   }
-  // Add token verification logic here
+
   next();
 };
 
@@ -76,12 +116,11 @@ app.get("/books", async (req, res) => {
 });
 
 // POST a new book
-app.post("/books",verifyToken, async (req, res) => {
+app.post("/books", verifyToken, async (req, res) => {
   try {
     const bookData = {
       ...req.body,
-       userEmail: req.user.email,
-    
+      userEmail: req.user.email,
       addedDate: new Date(),
     };
 
@@ -101,7 +140,7 @@ app.post("/books",verifyToken, async (req, res) => {
 });
 
 // GET single book by ID
-app.get("/books/:id",verifyToken, async (req, res) => {
+app.get("/books/:id", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -132,9 +171,8 @@ app.get("/books/:id",verifyToken, async (req, res) => {
   }
 });
 
-
-
-app.get("/my-books",verifyToken, async (req, res) => {
+// GET my books
+app.get("/my-books", verifyToken, async (req, res) => {
   const email = req.query.email;
 
   const result = await bookCollection
@@ -144,7 +182,7 @@ app.get("/my-books",verifyToken, async (req, res) => {
   res.send(result);
 });
 
-app.get("/my-books/:email",verifyToken, async (req, res) => {
+app.get("/my-books/:email", verifyToken, async (req, res) => {
   try {
     const email = req.params.email;
 
@@ -160,7 +198,8 @@ app.get("/my-books/:email",verifyToken, async (req, res) => {
   }
 });
 
-app.put("/books/:id",verifyToken, async (req, res) => {
+// UPDATE book
+app.put("/books/:id", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -213,11 +252,10 @@ app.put("/books/:id",verifyToken, async (req, res) => {
   }
 });
 
-app.delete("/books/:id",verifyToken, async (req, res) => {
+// DELETE book
+app.delete("/books/:id", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
-
-    const { ObjectId } = await import("mongodb");
 
     const result = await bookCollection.deleteOne({
       _id: new ObjectId(id),
@@ -239,25 +277,13 @@ app.delete("/books/:id",verifyToken, async (req, res) => {
   }
 });
 
-
-
-// Start server
-async function startServer() {
-  try {
-    await client.connect();
-
-    console.log("MongoDB connected!");
-
-    const db = client.db("Book-Nook");
-      bookCollection = db.collection("books");
-   const borrowCollection = db.collection("borrows");
-
-   app.post("/borrows", verifyToken, async (req, res) => {
+// POST borrow book
+app.post("/borrows", verifyToken, async (req, res) => {
   try {
     const { bookId, bookTitle, bookImage } = req.body;
     const userEmail = req.user.email;
 
-    // Check if this user already borrowed this book
+    // Check existing borrow
     const alreadyBorrowed = await borrowCollection.findOne({
       bookId: bookId,
       userEmail: userEmail,
@@ -272,6 +298,7 @@ async function startServer() {
 
     const borrowDate = new Date();
     const returnDate = new Date();
+
     returnDate.setDate(returnDate.getDate() + 14);
 
     const borrowData = {
@@ -290,13 +317,15 @@ async function startServer() {
       message: "Book borrowed successfully",
       insertedId: result.insertedId,
     });
+
   } catch (error) {
-    res.status(500).send({ message: error.message });
+    res.status(500).send({
+      message: error.message,
+    });
   }
 });
 
-
-
+// GET my borrows
 app.get("/my-borrows", verifyToken, async (req, res) => {
   try {
     const userEmail = req.user.email;
@@ -307,15 +336,24 @@ app.get("/my-borrows", verifyToken, async (req, res) => {
       .toArray();
 
     res.send(result);
+
   } catch (error) {
-    res.status(500).send({ message: error.message });
+    res.status(500).send({
+      message: error.message,
+    });
   }
 });
 
-
+// RETURN book
 app.delete("/borrows/:id", verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        message: "Invalid borrow ID",
+      });
+    }
 
     const result = await borrowCollection.deleteOne({
       _id: new ObjectId(id),
@@ -331,6 +369,7 @@ app.delete("/borrows/:id", verifyToken, async (req, res) => {
     res.send({
       message: "Book returned successfully",
     });
+
   } catch (error) {
     res.status(500).send({
       message: "Failed to return book",
@@ -338,16 +377,11 @@ app.delete("/borrows/:id", verifyToken, async (req, res) => {
   }
 });
 
-
-
-
-    app.listen(PORT, () => {
-      console.log(`Server running at http://localhost:${PORT}`);
-    });
-  } catch (error) {
-    console.error("Server error:", error);
-  }
+// Local development only
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Server running at http://localhost:${PORT}`);
+  });
 }
 
-startServer();
 export default app;
